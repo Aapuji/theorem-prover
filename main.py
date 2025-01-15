@@ -4,7 +4,8 @@ p = Symbol("P")
 q = Symbol("Q")
 
 axiom = And(
-    Or(And(p, q), Not(q))
+    Implication(p, Not(q)),
+    Xor(p, q)
 )
 
 theorem = q

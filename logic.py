@@ -153,11 +153,42 @@ class Or(Sentence):
     def formula(self):
         if len(self.disjuncts) == 1:
             return self.disjuncts[0].formula()
-        return " ∨  ".join([Sentence.parenthesize(disjunct.formula())
+        return " ∨ ".join([Sentence.parenthesize(disjunct.formula())
                             for disjunct in self.disjuncts])
 
     def symbols(self):
         return set.union(*[disjunct.symbols() for disjunct in self.disjuncts])
+    
+class Xor(Sentence):
+    def __init__(self, *operands):
+        for operand in operands:
+            Sentence.validate(operand)
+
+        self.operands = list(operands)
+    
+    def __eq__(self, value):
+        return isinstance(value, Xor) and self.operands == value.operands
+    
+    def __hash__(self):
+        return hash(
+            ("xor", tuple(hash(operand) for operand in self.operands))
+        )
+    
+    def __repr__(self):
+        operands = ", ".join([str(operand) for operand in self.operands])
+        return f"Xor({operands})"
+
+    def evaluate(self, model):
+        return any(operand.evaluate(model) for operand in self.operands) and all(not operand.evaluate(model) for operand in self.operands)
+
+    def formula(self):
+        if len(self.operands) == 1:
+            return self.operands[0].formula()
+        return " ⊕ ".join([Sentence.parenthesize(operand.formula())
+                            for operand in self.operands])
+
+    def symbols(self):
+        return set.union(*[operand.symbols() for operand in self.operands])
 
 
 class Implication(Sentence):
@@ -290,7 +321,6 @@ def distribute_or(disj: Or) -> Or|And:
             return result
 
     disjuncts = expand_inner_ors(disj.disjuncts) 
-    print('d', disjuncts) 
 
     if any([isinstance(s, And) for s in disjuncts]):
         ls = [[s] if isinstance(s, Symbol) or isinstance(s, Not) else s.conjuncts for s in disjuncts]
@@ -320,22 +350,32 @@ def convert_cnf(sentence: Sentence) -> Sentence:
         left = convert_cnf(sentence.left)
         right = convert_cnf(sentence.right)
 
-        sentence = And(Implication(left, right), Implication(right, left))
-    
+        sentence = And(Implication(left, right), Implication(right, left))        
+
     if isinstance(sentence, Implication):
         antecedent = convert_cnf(sentence.antecedent)
         consequent = convert_cnf(sentence.consequent)
 
         sentence = Or(Not(antecedent), consequent)
     
+    if isinstance(sentence, Xor):
+        operands = [convert_cnf(operand) for operand in sentence.operands]
+        sentence = And(Or(*operands), Not(And(*operands)))
+
     if isinstance(sentence, Not):
         operand = convert_cnf(sentence.operand)
 
+        if isinstance(operand, Symbol):
+            return Not(operand)
+        
         if isinstance(operand, And):
-            sentence = Or(Not(s) for s in operand.conjuncts)
+            print('op', operand.conjuncts)
+            sentence = Or(*[Not(s) for s in operand.conjuncts])
+        elif isinstance(operand, Or):
+            sentence = And(*[Not(s) for s in operand.disjuncts])
         else:
-            sentence = And(Not(s) for s in operand.disjuncts)
-    
+            pass    # unreachable
+
     if isinstance(sentence, Or):
         sentence = distribute_or(sentence)
     elif isinstance(sentence, And):
